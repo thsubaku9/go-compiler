@@ -79,7 +79,7 @@ func (c *Compiler) emit(op code.Opcode, operands ...int) int {
 
 /*
 adds the bytecode into the instruction buffer and
-returns index from where said bytecode was added
+returns index from where said bytecode starts
 */
 func (c *Compiler) addInstruction(ins []byte) int {
 	posNewInstruction := len(c.instructions)
