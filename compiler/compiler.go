@@ -63,6 +63,9 @@ func (c *Compiler) Bytecode() *Bytecode {
 	}
 }
 
+/*
+adds the object into constant pool and returns index as location
+*/
 func (c *Compiler) addConstant(obj object.Object) int {
 	c.constants = append(c.constants, obj)
 	return len(c.constants) - 1
@@ -74,6 +77,10 @@ func (c *Compiler) emit(op code.Opcode, operands ...int) int {
 	return pos
 }
 
+/*
+adds the bytecode into the instruction buffer and
+returns index from where said bytecode was added
+*/
 func (c *Compiler) addInstruction(ins []byte) int {
 	posNewInstruction := len(c.instructions)
 	c.instructions = append(c.instructions, ins...)
