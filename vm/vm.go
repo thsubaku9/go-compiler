@@ -24,13 +24,6 @@ func New(bytecode *compiler.Bytecode) *VM {
 	}
 }
 
-func (vm *VM) StackTop() object.Object {
-	if vm.stackPointer == 0 {
-		return nil
-	}
-	return vm.stack[vm.stackPointer-1]
-}
-
 func (vm *VM) Run() error {
 	for ip := 0; ip < len(vm.instructions); ip++ {
 		op := code.Opcode(vm.instructions[ip])
@@ -43,17 +36,11 @@ func (vm *VM) Run() error {
 			if err != nil {
 				return err
 			}
-		case code.OpAdd, code.OpSub:
-			right := vm.pop()
-			left := vm.pop()
-			leftValue := left.(*object.Integer).Value
-			rightValue := right.(*object.Integer).Value
-			if op == code.OpAdd {
-				result := leftValue + rightValue
-				vm.push(&object.Integer{Value: result})
-			} else if op == code.OpSub {
-				result := leftValue - rightValue
-				vm.push(&object.Integer{Value: result})
+
+		case code.OpAdd, code.OpSub, code.OpMul, code.OpDiv:
+			err := vm.executeBinaryOperation(op)
+			if err != nil {
+				return err
 			}
 		case code.OpPop:
 			vm.pop()
@@ -81,6 +68,44 @@ func (vm *VM) pop() object.Object {
 	return o
 }
 
+func (vm *VM) StackTop() object.Object {
+	if vm.stackPointer == 0 {
+		return nil
+	}
+	return vm.stack[vm.stackPointer-1]
+}
+
 func (vm *VM) LastPoppedStackElem() object.Object {
 	return vm.stack[vm.stackPointer]
+}
+
+func (vm *VM) executeBinaryOperation(op code.Opcode) error {
+
+	right := vm.pop()
+	left := vm.pop()
+	leftType := left.Type()
+	rightType := right.Type()
+
+	if leftType == object.INTEGER_OBJ && rightType == object.INTEGER_OBJ {
+		return vm.executeBinaryIntegerOperation(op, left.(*object.Integer), right.(*object.Integer))
+	}
+	return fmt.Errorf("unsupported types for binary operation: %s %s", leftType, rightType)
+}
+
+func (vm *VM) executeBinaryIntegerOperation(op code.Opcode, left *object.Integer, right *object.Integer) error {
+
+	var result int64
+	switch op {
+	case code.OpAdd:
+		result = left.Value + right.Value
+	case code.OpSub:
+		result = left.Value - right.Value
+	case code.OpMul:
+		result = left.Value * right.Value
+	case code.OpDiv:
+		result = left.Value / right.Value
+	default:
+		return fmt.Errorf("unknown integer operator: %d", op)
+	}
+	return vm.push(&object.Integer{Value: result})
 }
