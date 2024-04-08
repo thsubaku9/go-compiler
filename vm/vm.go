@@ -35,28 +35,28 @@ func (vm *VM) Run() error {
 			constIndex := code.ReadUint16(vm.instructions[ip+1:])
 			ip += 2
 
-			err := vm.push(vm.constants[constIndex])
-			if err != nil {
+			if err := vm.push(vm.constants[constIndex]); err != nil {
 				return err
 			}
 
 		case code.OpAdd, code.OpSub, code.OpMul, code.OpDiv:
-			err := vm.executeBinaryOperation(op)
-			if err != nil {
+			if err := vm.executeBinaryOperation(op); err != nil {
 				return err
 			}
 		case code.OpTrue:
-			err := vm.push(True)
-			if err != nil {
+			if err := vm.push(True); err != nil {
 				return err
 			}
 
 		case code.OpFalse:
-			err := vm.push(False)
-			if err != nil {
+			if err := vm.push(False); err != nil {
 				return err
 			}
 
+		case code.OpEqual, code.OpNotEqual, code.OpGreaterThan, code.OpGreaterThanEqual:
+			if err := vm.executeComp(op); err != nil {
+				return err
+			}
 		case code.OpPop:
 			vm.pop()
 		}
@@ -107,8 +107,7 @@ func (vm *VM) executeBinaryOperation(op code.Opcode) error {
 	return fmt.Errorf("unsupported types for binary operation: %s %s", leftType, rightType)
 }
 
-func (vm *VM) executeBinaryIntegerOperation(op code.Opcode, left *object.Integer, right *object.Integer) error {
-
+func (vm *VM) executeBinaryIntegerOperation(op code.Opcode, left, right *object.Integer) error {
 	var result int64
 	switch op {
 	case code.OpAdd:
@@ -123,4 +122,50 @@ func (vm *VM) executeBinaryIntegerOperation(op code.Opcode, left *object.Integer
 		return fmt.Errorf("unknown integer operator: %d", op)
 	}
 	return vm.push(&object.Integer{Value: result})
+}
+
+func (vm *VM) executeComp(op code.Opcode) error {
+	right := vm.pop()
+	left := vm.pop()
+
+	if left.Type() == object.INTEGER_OBJ && right.Type() == object.INTEGER_OBJ {
+		return vm.executeIntegerComparison(op, left.(*object.Integer), right.(*object.Integer))
+	} else if left.Type() == object.STRING_OBJ && right.Type() == object.STRING_OBJ {
+		return vm.push(nativeBoolToBooleanObject(left.(*object.String).Value == right.(*object.String).Value))
+
+	}
+
+	switch op {
+	case code.OpEqual:
+		return vm.push(nativeBoolToBooleanObject(right == left))
+	case code.OpNotEqual:
+		return vm.push(nativeBoolToBooleanObject(right != left))
+	default:
+		return fmt.Errorf("unknown operator: %d (%s %s)", op, left.Type(), right.Type())
+	}
+}
+
+func (vm *VM) executeIntegerComparison(op code.Opcode, left, right *object.Integer) error {
+	leftValue := left.Value
+	rightValue := right.Value
+
+	switch op {
+	case code.OpEqual:
+		return vm.push(nativeBoolToBooleanObject(rightValue == leftValue))
+	case code.OpNotEqual:
+		return vm.push(nativeBoolToBooleanObject(rightValue != leftValue))
+	case code.OpGreaterThan:
+		return vm.push(nativeBoolToBooleanObject(leftValue > rightValue))
+	case code.OpGreaterThanEqual:
+		return vm.push(nativeBoolToBooleanObject(leftValue >= rightValue))
+	default:
+		return fmt.Errorf("unknown operator: %d", op)
+	}
+}
+
+func nativeBoolToBooleanObject(input bool) *object.Boolean {
+	if input {
+		return True
+	}
+	return False
 }

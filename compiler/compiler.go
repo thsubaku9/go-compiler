@@ -44,20 +44,19 @@ func (c *Compiler) Compile(node ast.Node) error {
 	case *ast.InfixExpression:
 		if node.Operator == "<" || node.Operator == "<=" {
 
-			err := c.Compile(node.Right)
-			if err != nil {
+			if err := c.Compile(node.Right); err != nil {
 				return err
 			}
 
-			err = c.Compile(node.Left)
-			if err != nil {
+			if err := c.Compile(node.Left); err != nil {
 				return err
 			}
+
 			switch node.Operator {
 			case "<":
-				c.emit(code.OpGreaterThanEqual)
-			case "<=":
 				c.emit(code.OpGreaterThan)
+			case "<=":
+				c.emit(code.OpGreaterThanEqual)
 			}
 
 			return nil
