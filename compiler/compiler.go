@@ -8,8 +8,10 @@ import (
 )
 
 type Compiler struct {
-	instructions code.Instructions
-	constants    []object.Object
+	instructions          code.Instructions
+	constants             []object.Object
+	lastInstruction       EmittedInstruction
+	lastToLastInstruction EmittedInstruction
 }
 
 type Bytecode struct {
@@ -17,10 +19,17 @@ type Bytecode struct {
 	Constants    []object.Object
 }
 
+type EmittedInstruction struct {
+	Opcode   code.Opcode
+	Position int
+}
+
 func New() *Compiler {
 	return &Compiler{
-		instructions: code.Instructions{},
-		constants:    []object.Object{},
+		instructions:          code.Instructions{},
+		constants:             []object.Object{},
+		lastInstruction:       EmittedInstruction{},
+		lastToLastInstruction: EmittedInstruction{},
 	}
 }
 
@@ -123,17 +132,27 @@ func (c *Compiler) Compile(node ast.Node) error {
 			return err
 		}
 
-		c.emit(code.OpJumpNotTruthy, 9999) // todo -> bogus value which will get removed later
+		jumpNotTruthyPos := c.emit(code.OpJumpNotTruthy, 9999) // compiler does backpatch
 		if err := c.Compile(node.Consequence); err != nil {
 			return err
 		}
 
+		if c.lastInstructionIsPop() {
+			c.removeLastPop()
+		}
+
+		afterConsequencePos := len(c.instructions)
+		c.changeOperand(jumpNotTruthyPos, afterConsequencePos)
+
 	case *ast.BlockStatement:
 		for _, s := range node.Statements {
-			// todo -> this leads to extra OpPop being pushed
 			if err := c.Compile(s); err != nil {
 				return err
 			}
+			if c.lastInstructionIsPop() {
+				c.removeLastPop()
+			}
+
 		}
 	}
 
@@ -158,6 +177,7 @@ func (c *Compiler) addConstant(obj object.Object) int {
 func (c *Compiler) emit(op code.Opcode, operands ...int) int {
 	ins := code.Make(op, operands...)
 	pos := c.addInstruction(ins)
+	c.setLastInstruction(op, pos)
 	return pos
 }
 
@@ -169,4 +189,32 @@ func (c *Compiler) addInstruction(ins []byte) int {
 	posNewInstruction := len(c.instructions)
 	c.instructions = append(c.instructions, ins...)
 	return posNewInstruction
+}
+
+func (c *Compiler) setLastInstruction(op code.Opcode, pos int) {
+	lastToLastIns := c.lastInstruction
+	last := EmittedInstruction{Opcode: op, Position: pos}
+	c.lastToLastInstruction = lastToLastIns
+	c.lastInstruction = last
+}
+
+func (c *Compiler) lastInstructionIsPop() bool {
+	return c.lastInstruction.Opcode == code.OpPop
+}
+
+func (c *Compiler) removeLastPop() {
+	c.instructions = c.instructions[:c.lastInstruction.Position]
+	c.lastInstruction = c.lastToLastInstruction
+}
+
+func (c *Compiler) replaceInstruction(pos int, newInstruction []byte) {
+	for i := 0; i < len(newInstruction); i++ {
+		c.instructions[pos+i] = newInstruction[i]
+	}
+}
+
+func (c *Compiler) changeOperand(opPos int, operand int) {
+	op := code.Opcode(c.instructions[opPos])
+	newInstruction := code.Make(op, operand)
+	c.replaceInstruction(opPos, newInstruction)
 }
