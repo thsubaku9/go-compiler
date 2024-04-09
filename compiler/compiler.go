@@ -116,7 +116,27 @@ func (c *Compiler) Compile(node ast.Node) error {
 		} else {
 			c.emit(code.OpFalse)
 		}
+
+	case *ast.IfExpression:
+
+		if err := c.Compile(node.Condition); err != nil {
+			return err
+		}
+
+		c.emit(code.OpJumpNotTruthy, 9999) // todo -> bogus value which will get removed later
+		if err := c.Compile(node.Consequence); err != nil {
+			return err
+		}
+
+	case *ast.BlockStatement:
+		for _, s := range node.Statements {
+			// todo -> this leads to extra OpPop being pushed
+			if err := c.Compile(s); err != nil {
+				return err
+			}
+		}
 	}
+
 	return nil
 }
 
