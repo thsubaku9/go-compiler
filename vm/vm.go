@@ -11,12 +11,24 @@ const StackLim = 3072
 
 var True = &object.Boolean{Value: true}
 var False = &object.Boolean{Value: false}
+var Null = &object.Null{}
 
 type VM struct {
 	instructions code.Instructions
 	constants    []object.Object
 	stack        []object.Object
 	stackPointer int
+}
+
+func isTruthy(obj object.Object) bool {
+	switch obj := obj.(type) {
+	case *object.Boolean:
+		return obj.Value
+	case *object.Null:
+		return false
+	default:
+		return true
+	}
 }
 
 func New(bytecode *compiler.Bytecode) *VM {
@@ -39,10 +51,16 @@ func (vm *VM) Run() error {
 				return err
 			}
 
+		case code.OpNull:
+			if err := vm.push(Null); err != nil {
+				return err
+			}
+
 		case code.OpAdd, code.OpSub, code.OpMul, code.OpDiv:
 			if err := vm.executeBinaryOperation(op); err != nil {
 				return err
 			}
+
 		case code.OpTrue:
 			if err := vm.push(True); err != nil {
 				return err
@@ -67,9 +85,24 @@ func (vm *VM) Run() error {
 			if err := vm.executeComp(op); err != nil {
 				return err
 			}
+
 		case code.OpPop:
 			vm.pop()
+
+		case code.OpJump:
+			pos := int(code.ReadUint16(vm.instructions[ip+1:]))
+			ip = pos - 1
+
+		case code.OpJumpNotTruthy:
+			pos := int(code.ReadUint16(vm.instructions[ip+1:]))
+			ip += 2
+
+			condition := vm.pop()
+			if !isTruthy(condition) {
+				ip = pos - 1
+			}
 		}
+
 	}
 	return nil
 }
@@ -186,7 +219,7 @@ func (vm *VM) executeBangOperator() error {
 	switch operand {
 	case True:
 		return vm.push(False)
-	case False:
+	case False, Null:
 		return vm.push(True)
 	default:
 		return vm.push(False)
