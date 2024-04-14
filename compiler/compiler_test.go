@@ -172,10 +172,13 @@ func TestConditionals(t *testing.T) {
 				code.Make(code.OpConstant, 0),
 				// 0007
 				code.Make(code.OpJump, 13),
-				// 0010 code.Make(code.OpConstant, 1), // 0013
+				// 0010
+				code.Make(code.OpConstant, 1),
+				// 0013
 				code.Make(code.OpPop),
 				// 0014
-				code.Make(code.OpConstant, 2), // 0017
+				code.Make(code.OpConstant, 2),
+				// 0017
 				code.Make(code.OpPop),
 			},
 		},
