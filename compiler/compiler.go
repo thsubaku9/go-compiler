@@ -12,6 +12,7 @@ type Compiler struct {
 	constants             []object.Object
 	lastInstruction       EmittedInstruction
 	lastToLastInstruction EmittedInstruction
+	symbolTable           *SymbolTable
 }
 
 type Bytecode struct {
@@ -30,7 +31,15 @@ func New() *Compiler {
 		constants:             []object.Object{},
 		lastInstruction:       EmittedInstruction{},
 		lastToLastInstruction: EmittedInstruction{},
+		symbolTable:           NewSymbolTable(),
 	}
+}
+
+func NewWithState(s *SymbolTable, constants []object.Object) *Compiler {
+	cp := New()
+	cp.symbolTable = s
+	cp.constants = constants
+	return cp
 }
 
 func (c *Compiler) Compile(node ast.Node) error {
@@ -44,11 +53,17 @@ func (c *Compiler) Compile(node ast.Node) error {
 		}
 
 	case *ast.ExpressionStatement:
-		err := c.Compile(node.Expression)
-		if err != nil {
+		if err := c.Compile(node.Expression); err != nil {
 			return err
 		}
 		c.emit(code.OpPop)
+
+	case *ast.LetStatement:
+		if err := c.Compile(node.Value); err != nil {
+			return err
+		}
+		symbol := c.symbolTable.Define(node.Name.Value)
+		c.emit(code.OpSetGlobal, symbol.Index)
 
 	case *ast.PrefixExpression:
 		if err := c.Compile(node.Right); err != nil {
@@ -115,19 +130,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 			return fmt.Errorf("unknown operator %s", node.Operator)
 		}
 
-	case *ast.IntegerLiteral:
-		integer := &object.Integer{Value: node.Value}
-		c.emit(code.OpConstant, c.addConstant(integer))
-
-	case *ast.Boolean:
-		if node.Value {
-			c.emit(code.OpTrue)
-		} else {
-			c.emit(code.OpFalse)
-		}
-
 	case *ast.IfExpression:
-
 		if err := c.Compile(node.Condition); err != nil {
 			return err
 		}
@@ -170,6 +173,25 @@ func (c *Compiler) Compile(node ast.Node) error {
 			}
 
 		}
+
+	case *ast.Identifier:
+		symbol, ok := c.symbolTable.Resolve(node.Value)
+		if !ok {
+			return fmt.Errorf("undefined variable %s", node.Value)
+		}
+		c.emit(code.OpGetGlobal, symbol.Index)
+
+	case *ast.IntegerLiteral:
+		integer := &object.Integer{Value: node.Value}
+		c.emit(code.OpConstant, c.addConstant(integer))
+
+	case *ast.Boolean:
+		if node.Value {
+			c.emit(code.OpTrue)
+		} else {
+			c.emit(code.OpFalse)
+		}
+
 	}
 
 	return nil
@@ -208,10 +230,7 @@ func (c *Compiler) addInstruction(ins []byte) int {
 }
 
 func (c *Compiler) setLastInstruction(op code.Opcode, pos int) {
-	lastToLastIns := c.lastInstruction
-	last := EmittedInstruction{Opcode: op, Position: pos}
-	c.lastToLastInstruction = lastToLastIns
-	c.lastInstruction = last
+	c.lastToLastInstruction, c.lastInstruction = c.lastInstruction, EmittedInstruction{Opcode: op, Position: pos}
 }
 
 func (c *Compiler) lastInstructionIsPop() bool {
