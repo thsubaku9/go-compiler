@@ -7,7 +7,10 @@ import (
 	"monkey-i/object"
 )
 
-const StackLim = 3072
+const (
+	StackLim    = 2048
+	GlobalsSize = 2048
+)
 
 var True = &object.Boolean{Value: true}
 var False = &object.Boolean{Value: false}
@@ -18,6 +21,7 @@ type VM struct {
 	constants    []object.Object
 	stack        []object.Object
 	stackPointer int
+	globals      []object.Object
 }
 
 func isTruthy(obj object.Object) bool {
@@ -32,11 +36,19 @@ func isTruthy(obj object.Object) bool {
 }
 
 func New(bytecode *compiler.Bytecode) *VM {
-	return &VM{instructions: bytecode.Instructions,
+	return &VM{
+		instructions: bytecode.Instructions,
 		constants:    bytecode.Constants,
 		stack:        make([]object.Object, StackLim),
 		stackPointer: 0,
+		globals:      make([]object.Object, GlobalsSize),
 	}
+}
+
+func NewWithGlobalsStore(bytecode *compiler.Bytecode, s []object.Object) *VM {
+	vm := New(bytecode)
+	vm.globals = s
+	return vm
 }
 
 func (vm *VM) Run() error {
@@ -101,6 +113,19 @@ func (vm *VM) Run() error {
 			if !isTruthy(condition) {
 				ip = pos - 1
 			}
+
+		case code.OpSetGlobal:
+			gIdx := code.ReadUint16(vm.instructions[ip+1:])
+			ip += 2
+			vm.globals[gIdx] = vm.pop()
+
+		case code.OpGetGlobal:
+			gIdx := code.ReadUint16(vm.instructions[ip+1:])
+			ip += 2
+			if err := vm.push(vm.globals[gIdx]); err != nil {
+				return err
+			}
+
 		}
 
 	}

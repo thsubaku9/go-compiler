@@ -35,6 +35,13 @@ func New() *Compiler {
 	}
 }
 
+func NewWithState(s *SymbolTable, constants []object.Object) *Compiler {
+	cp := New()
+	cp.symbolTable = s
+	cp.constants = constants
+	return cp
+}
+
 func (c *Compiler) Compile(node ast.Node) error {
 	switch node := node.(type) {
 	case *ast.Program:
@@ -223,10 +230,7 @@ func (c *Compiler) addInstruction(ins []byte) int {
 }
 
 func (c *Compiler) setLastInstruction(op code.Opcode, pos int) {
-	lastToLastIns := c.lastInstruction
-	last := EmittedInstruction{Opcode: op, Position: pos}
-	c.lastToLastInstruction = lastToLastIns
-	c.lastInstruction = last
+	c.lastToLastInstruction, c.lastInstruction = c.lastInstruction, EmittedInstruction{Opcode: op, Position: pos}
 }
 
 func (c *Compiler) lastInstructionIsPop() bool {
