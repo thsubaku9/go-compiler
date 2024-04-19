@@ -44,11 +44,15 @@ func (c *Compiler) Compile(node ast.Node) error {
 		}
 
 	case *ast.ExpressionStatement:
-		err := c.Compile(node.Expression)
-		if err != nil {
+		if err := c.Compile(node.Expression); err != nil {
 			return err
 		}
 		c.emit(code.OpPop)
+
+	case *ast.LetStatement:
+		if err := c.Compile(node.Value); err != nil {
+			return err
+		}
 
 	case *ast.PrefixExpression:
 		if err := c.Compile(node.Right); err != nil {
