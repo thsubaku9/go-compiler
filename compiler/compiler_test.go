@@ -235,6 +235,32 @@ func TestGlobalLetStatements(t *testing.T) {
 	runCompilerTests(t, tests)
 }
 
+func TestStringExprs(t *testing.T) {
+
+	tests := []compilerTestCase{
+		{
+			input:             `"monkey"`,
+			expectedConstants: []interface{}{"monkey"},
+			expectedInstructions: []code.Instructions{
+				code.Make(code.OpConstant, 0),
+				code.Make(code.OpPop),
+			},
+		},
+		{
+			input:             `"mon" + "key"`,
+			expectedConstants: []interface{}{"mon", "key"},
+			expectedInstructions: []code.Instructions{
+				code.Make(code.OpConstant, 0),
+				code.Make(code.OpConstant, 1),
+				code.Make(code.OpAdd),
+				code.Make(code.OpPop),
+			},
+		},
+	}
+
+	runCompilerTests(t, tests)
+}
+
 func runCompilerTests(t *testing.T, tests []compilerTestCase) {
 	t.Helper()
 	for _, tt := range tests {
@@ -249,7 +275,7 @@ func runCompilerTests(t *testing.T, tests []compilerTestCase) {
 		if err != nil {
 			t.Fatalf("testInstructions failed: %s", err)
 		}
-		err = testConstants(t, tt.expectedConstants, bytecode.Constants)
+		err = testConstants(tt.expectedConstants, bytecode.Constants)
 		if err != nil {
 			t.Fatalf("testConstants failed: %s", err)
 		}
@@ -286,7 +312,7 @@ func testInstructions(expected []code.Instructions, actual code.Instructions) er
 	return nil
 }
 
-func testConstants(t *testing.T, expected []interface{}, actual []object.Object) error {
+func testConstants(expected []interface{}, actual []object.Object) error {
 	if len(expected) != len(actual) {
 		return fmt.Errorf("wrong number of constants. got=%d, want=%d",
 			len(actual), len(expected))
@@ -298,6 +324,10 @@ func testConstants(t *testing.T, expected []interface{}, actual []object.Object)
 			err := testIntegerObject(int64(constant), actual[i])
 			if err != nil {
 				return fmt.Errorf("constant %d - testIntegerObject failed: %s", i, err)
+			}
+		case string:
+			if err := testStringObject(constant, actual[i]); err != nil {
+				return fmt.Errorf("constant %d - testStringObject failed: %s", i, err)
 			}
 		}
 	}
@@ -311,6 +341,17 @@ func testIntegerObject(expected int64, actual object.Object) error {
 	}
 	if result.Value != expected {
 		return fmt.Errorf("object has wrong value. got=%d, want=%d", result.Value, expected)
+	}
+	return nil
+}
+
+func testStringObject(expected string, actual object.Object) error {
+	res, ok := actual.(*object.String)
+	if !ok {
+		return fmt.Errorf("object is not String. got=%T (%+v)", actual, actual)
+	}
+	if res.Value != expected {
+		return fmt.Errorf("object has wrong value. got=%q, want=%q", res.Value, expected)
 	}
 	return nil
 }
