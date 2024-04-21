@@ -130,7 +130,25 @@ func (vm *VM) Run() error {
 			numElems := int(code.ReadUint16(vm.instructions[ip+1:]))
 			ip += 2
 			arr := vm.buildArray(vm.stackPointer-numElems, vm.stackPointer)
+			vm.stackPointer = vm.stackPointer - numElems
 			if err := vm.push(arr); err != nil {
+				return err
+			}
+
+		case code.OpHash:
+			numElems := int(code.ReadUint16(vm.instructions[ip+1:]))
+			ip += 2
+
+			hash, err := vm.buildHash(vm.stackPointer-numElems, vm.stackPointer)
+
+			if err != nil {
+				return err
+			}
+
+			vm.stackPointer = vm.stackPointer - numElems
+
+			err = vm.push(hash)
+			if err != nil {
 				return err
 			}
 		}
@@ -163,6 +181,16 @@ func (vm *VM) StackTop() object.Object {
 		return nil
 	}
 	return vm.stack[vm.stackPointer-1]
+}
+
+func (vm *VM) StackTrace() string {
+	var res string = ""
+
+	for i := 0; i < vm.stackPointer; i++ {
+		res += fmt.Sprintf("%s\n", vm.stack[i])
+	}
+
+	return res
 }
 
 func (vm *VM) LastPoppedStackElem() object.Object {
@@ -289,4 +317,21 @@ func (vm *VM) buildArray(startIndex, endIndex int) object.Object {
 	}
 
 	return &object.Array{Elements: elems}
+}
+
+func (vm *VM) buildHash(startIndex, endIndex int) (object.Object, error) {
+	hashPair := make(map[object.HashKey]object.HashPair)
+
+	for i := startIndex; i < endIndex; i += 2 {
+		key := vm.stack[i]
+		value := vm.stack[i+1]
+
+		pair := object.HashPair{Key: key, Value: value}
+		hashKey, ok := key.(object.Hashable)
+		if !ok {
+			return nil, fmt.Errorf("unusable as hash key: %s", key.Type())
+		}
+		hashPair[hashKey.HashKey()] = pair
+	}
+	return &object.Hash{Pairs: hashPair}, nil
 }
