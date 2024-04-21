@@ -126,6 +126,39 @@ func (vm *VM) Run() error {
 				return err
 			}
 
+		case code.OpArray:
+			numElems := int(code.ReadUint16(vm.instructions[ip+1:]))
+			ip += 2
+			arr := vm.buildArray(vm.stackPointer-numElems, vm.stackPointer)
+			vm.stackPointer = vm.stackPointer - numElems
+			if err := vm.push(arr); err != nil {
+				return err
+			}
+
+		case code.OpHash:
+			numElems := int(code.ReadUint16(vm.instructions[ip+1:]))
+			ip += 2
+
+			hash, err := vm.buildHash(vm.stackPointer-numElems, vm.stackPointer)
+
+			if err != nil {
+				return err
+			}
+
+			vm.stackPointer = vm.stackPointer - numElems
+
+			err = vm.push(hash)
+			if err != nil {
+				return err
+			}
+
+		case code.OpIndex:
+			index := vm.pop()
+			left := vm.pop()
+			err := vm.executeIndexExpression(left, index)
+			if err != nil {
+				return err
+			}
 		}
 
 	}
@@ -158,6 +191,16 @@ func (vm *VM) StackTop() object.Object {
 	return vm.stack[vm.stackPointer-1]
 }
 
+func (vm *VM) StackTrace() string {
+	var res string = ""
+
+	for i := 0; i < vm.stackPointer; i++ {
+		res += fmt.Sprintf("%s\n", vm.stack[i])
+	}
+
+	return res
+}
+
 func (vm *VM) LastPoppedStackElem() object.Object {
 	return vm.stack[vm.stackPointer]
 }
@@ -169,9 +212,13 @@ func (vm *VM) executeBinaryOperation(op code.Opcode) error {
 	leftType := left.Type()
 	rightType := right.Type()
 
-	if leftType == object.INTEGER_OBJ && rightType == object.INTEGER_OBJ {
+	switch {
+	case leftType == object.INTEGER_OBJ && rightType == object.INTEGER_OBJ:
 		return vm.executeBinaryIntegerOperation(op, left.(*object.Integer), right.(*object.Integer))
+	case leftType == object.STRING_OBJ && rightType == object.STRING_OBJ:
+		return vm.executeBinaryStringOperation(op, left.(*object.String), right.(*object.String))
 	}
+
 	return fmt.Errorf("unsupported types for binary operation: %s %s", leftType, rightType)
 }
 
@@ -190,6 +237,14 @@ func (vm *VM) executeBinaryIntegerOperation(op code.Opcode, left, right *object.
 		return fmt.Errorf("unknown integer operator: %d", op)
 	}
 	return vm.push(&object.Integer{Value: result})
+}
+
+func (vm *VM) executeBinaryStringOperation(op code.Opcode, left, right *object.String) error {
+	if op != code.OpAdd {
+		return fmt.Errorf("unknown string operator: %d", op)
+	}
+
+	return vm.push(&object.String{Value: left.Value + right.Value})
 }
 
 func (vm *VM) executeComp(op code.Opcode) error {
@@ -260,4 +315,67 @@ func (vm *VM) executeNumberNegation() error {
 
 	value := operand.(*object.Integer).Value
 	return vm.push(&object.Integer{Value: -value})
+}
+
+func (vm *VM) buildArray(startIndex, endIndex int) object.Object {
+	elems := make([]object.Object, endIndex-startIndex)
+
+	for i := startIndex; i < endIndex; i++ {
+		elems[i-startIndex] = vm.stack[i]
+	}
+
+	return &object.Array{Elements: elems}
+}
+
+func (vm *VM) buildHash(startIndex, endIndex int) (object.Object, error) {
+	hashPair := make(map[object.HashKey]object.HashPair)
+
+	for i := startIndex; i < endIndex; i += 2 {
+		key := vm.stack[i]
+		value := vm.stack[i+1]
+
+		pair := object.HashPair{Key: key, Value: value}
+		hashKey, ok := key.(object.Hashable)
+		if !ok {
+			return nil, fmt.Errorf("unusable as hash key: %s", key.Type())
+		}
+		hashPair[hashKey.HashKey()] = pair
+	}
+	return &object.Hash{Pairs: hashPair}, nil
+}
+
+func (vm *VM) executeIndexExpression(left, index object.Object) error {
+	switch {
+	case left.Type() == object.ARRAY_OBJ && index.Type() == object.INTEGER_OBJ:
+		return vm.executeArrayIndex(left, index)
+	case left.Type() == object.HASH_OBJ:
+		return vm.executeHashIndex(left, index)
+	default:
+		return fmt.Errorf("index operator not supported: %s", left.Type())
+	}
+}
+
+func (vm *VM) executeArrayIndex(array, index object.Object) error {
+	arrayObject := array.(*object.Array)
+	i := index.(*object.Integer).Value
+	max := int64(len(arrayObject.Elements) - 1)
+	if i < 0 || i > max {
+		return vm.push(Null)
+	}
+	return vm.push(arrayObject.Elements[i])
+}
+
+func (vm *VM) executeHashIndex(hash, index object.Object) error {
+	hashObj := hash.(*object.Hash)
+	key, ok := index.(object.Hashable)
+	if !ok {
+		return fmt.Errorf("unusable as hash key: %s", index.Type())
+	}
+
+	pair, ok := hashObj.Pairs[key.HashKey()]
+	if !ok {
+		return vm.push(Null)
+	}
+	return vm.push(pair.Value)
+
 }

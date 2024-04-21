@@ -5,6 +5,7 @@ import (
 	"monkey-c/code"
 	"monkey-i/ast"
 	"monkey-i/object"
+	"sort"
 )
 
 type Compiler struct {
@@ -64,6 +65,47 @@ func (c *Compiler) Compile(node ast.Node) error {
 		}
 		symbol := c.symbolTable.Define(node.Name.Value)
 		c.emit(code.OpSetGlobal, symbol.Index)
+
+	case *ast.ArrayLiteral:
+		for _, el := range node.Elements {
+			if err := c.Compile(el); err != nil {
+				return err
+			}
+		}
+		c.emit(code.OpArray, len(node.Elements))
+
+	case *ast.HashLiteral:
+		pairArray := [][]ast.Expression{}
+		for k, v := range node.Pairs {
+			pair := []ast.Expression{k, v}
+			pairArray = append(pairArray, pair)
+		}
+
+		sort.Slice(pairArray, func(i, j int) bool {
+			return pairArray[i][0].String() < pairArray[j][0].String()
+		})
+
+		for _, pair := range pairArray {
+			if err := c.Compile(pair[0]); err != nil {
+				return err
+			}
+
+			if err := c.Compile(pair[1]); err != nil {
+				return err
+			}
+		}
+		c.emit(code.OpHash, len(node.Pairs)*2)
+
+	case *ast.IndexExpression:
+		if err := c.Compile(node.Left); err != nil {
+			return err
+		}
+
+		if err := c.Compile(node.Index); err != nil {
+			return err
+		}
+
+		c.emit(code.OpIndex)
 
 	case *ast.PrefixExpression:
 		if err := c.Compile(node.Right); err != nil {
@@ -184,6 +226,10 @@ func (c *Compiler) Compile(node ast.Node) error {
 	case *ast.IntegerLiteral:
 		integer := &object.Integer{Value: node.Value}
 		c.emit(code.OpConstant, c.addConstant(integer))
+
+	case *ast.StringLiteral:
+		str := &object.String{Value: node.Value}
+		c.emit(code.OpConstant, c.addConstant(str))
 
 	case *ast.Boolean:
 		if node.Value {
