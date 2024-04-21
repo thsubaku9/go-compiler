@@ -101,7 +101,7 @@ func testExpectedObject(t *testing.T, expected interface{}, actual object.Object
 		if actual != Null {
 			t.Errorf("object is not Null: %T (%+v)", actual, actual)
 		}
-	case []int:
+	case []interface{}:
 		array, ok := actual.(*object.Array)
 		if !ok {
 			t.Errorf("object not Array: %T (%+v)", actual, actual)
@@ -115,9 +115,17 @@ func testExpectedObject(t *testing.T, expected interface{}, actual object.Object
 		}
 
 		for i, expectedElem := range expected {
-			err := testIntegerObject(int64(expectedElem), array.Elements[i])
+			var err error
+
+			switch castedElem := expectedElem.(type) {
+			case int:
+				err = testIntegerObject(int64(castedElem), array.Elements[i])
+			case string:
+				err = testStringObject(castedElem, array.Elements[i])
+			}
+
 			if err != nil {
-				t.Errorf("testIntegerObject failed: %s", err)
+				t.Errorf("array element comparison failed: %s", err)
 			}
 		}
 
@@ -213,6 +221,7 @@ func TestArrayLiterals(t *testing.T) {
 		{"[]", []int{}},
 		{"[1, 2, 3]", []int{1, 2, 3}},
 		{"[1 + 2, 3 * 4, 5 + 6]", []int{3, 12, 11}},
+		{`["mario","bowser"]`, []string{"mario", "bowser"}},
 	}
 	runVmTests(t, tests)
 }
