@@ -126,6 +126,13 @@ func (vm *VM) Run() error {
 				return err
 			}
 
+		case code.OpArray:
+			numElems := int(code.ReadUint16(vm.instructions[ip+1:]))
+			ip += 2
+			arr := vm.buildArray(vm.stackPointer-numElems, vm.stackPointer)
+			if err := vm.push(arr); err != nil {
+				return err
+			}
 		}
 
 	}
@@ -272,4 +279,14 @@ func (vm *VM) executeNumberNegation() error {
 
 	value := operand.(*object.Integer).Value
 	return vm.push(&object.Integer{Value: -value})
+}
+
+func (vm *VM) buildArray(startIndex, endIndex int) object.Object {
+	elems := make([]object.Object, endIndex-startIndex)
+
+	for i := startIndex; i < endIndex; i++ {
+		elems[i-startIndex] = vm.stack[i]
+	}
+
+	return &object.Array{Elements: elems}
 }
