@@ -76,6 +76,23 @@ func (c *Compiler) Compile(node ast.Node) error {
 		symbol := c.symbolTable.Define(node.Name.Value)
 		c.emit(code.OpSetGlobal, symbol.Index)
 
+	case *ast.FunctionBlock:
+		c.enterScope()
+
+		if err := c.Compile(node.Body); err != nil {
+			return err
+		}
+
+		fnIns := c.leaveScope()
+		compiledFn := &code.CompiledFunction{Instructions: fnIns}
+		c.emit(code.OpConstant, c.addConstant(compiledFn))
+
+	case *ast.ReturnStatement:
+		if err := c.Compile(node.ReturnValue); err != nil {
+			return err
+		}
+		c.emit(code.OpReturnValue)
+
 	case *ast.ArrayLiteral:
 		for _, el := range node.Elements {
 			if err := c.Compile(el); err != nil {
