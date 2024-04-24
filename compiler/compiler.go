@@ -93,6 +93,12 @@ func (c *Compiler) Compile(node ast.Node) error {
 		compiledFn := &code.CompiledFunction{Instructions: fnIns}
 		c.emit(code.OpConstant, c.addConstant(compiledFn))
 
+	case *ast.CallExpression:
+		if err := c.Compile(node.Function); err != nil {
+			return err
+		}
+		c.emit(code.OpCall)
+
 	case *ast.ReturnStatement:
 		if err := c.Compile(node.ReturnValue); err != nil {
 			return err
