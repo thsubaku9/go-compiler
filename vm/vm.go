@@ -64,7 +64,7 @@ func (vm *VM) StackTop() object.Object {
 }
 
 func (vm *VM) StackTrace() string {
-	var res string = "==STACK TRACE==\n"
+	var res string = "==STACK TRACE[" + fmt.Sprint(vm.stackPointer) + "]==\n"
 
 	for i := 0; i < vm.stackPointer; i++ {
 		res += fmt.Sprintf("%s\n", vm.stack[i])
@@ -247,6 +247,15 @@ func (vm *VM) Run() error {
 			if err := vm.push(returnValue); err != nil {
 				return err
 			}
+
+		case code.OpReturn:
+			vm.popRecord()
+			vm.pop()
+			err := vm.push(Null)
+			if err != nil {
+				return err
+			}
+
 		}
 
 	}
