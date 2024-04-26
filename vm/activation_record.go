@@ -11,7 +11,7 @@ func (ar *ActivationRecord) Instructions() code.Instructions {
 	return ar.fn.Instructions
 }
 
-func NewFrame(fn *code.CompiledFunction) *ActivationRecord {
+func NewRecord(fn *code.CompiledFunction) *ActivationRecord {
 	return &ActivationRecord{
 		fn:                 fn,
 		instructionPointer: -1,

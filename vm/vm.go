@@ -95,7 +95,7 @@ func (vm *VM) popRecord() *ActivationRecord {
 func New(bytecode *compiler.Bytecode) *VM {
 
 	mainFn := &code.CompiledFunction{Instructions: bytecode.Instructions}
-	mainFrame := NewFrame(mainFn)
+	mainRecord := NewRecord(mainFn)
 	vm := &VM{
 		constants:         bytecode.Constants,
 		stack:             make([]object.Object, StackLim),
@@ -104,7 +104,7 @@ func New(bytecode *compiler.Bytecode) *VM {
 		activationRecords: make([]*ActivationRecord, ActivationRecordSize),
 		recordPointer:     0,
 	}
-	vm.pushRecord(mainFrame)
+	vm.pushRecord(mainRecord)
 	return vm
 }
 
@@ -219,16 +219,32 @@ func (vm *VM) Run() error {
 
 			vm.stackPointer = vm.stackPointer - numElems
 
-			err = vm.push(hash)
-			if err != nil {
+			if err = vm.push(hash); err != nil {
 				return err
 			}
 
 		case code.OpIndex:
 			index := vm.pop()
 			left := vm.pop()
-			err := vm.executeIndexExpression(left, index)
-			if err != nil {
+			if err := vm.executeIndexExpression(left, index); err != nil {
+				return err
+			}
+
+		case code.OpCall:
+			fn, ok := vm.stack[vm.stackPointer-1].(*code.CompiledFunction)
+			if !ok {
+				return fmt.Errorf("calling non-function")
+			}
+
+			ar := NewRecord(fn)
+			vm.pushRecord(ar)
+
+		case code.OpReturnValue:
+			returnValue := vm.pop()
+			vm.popRecord()
+			vm.pop() // removing the function from the global stack
+
+			if err := vm.push(returnValue); err != nil {
 				return err
 			}
 		}
