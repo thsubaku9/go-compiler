@@ -8,8 +8,9 @@ import (
 )
 
 const (
-	StackLim    = 2048
-	GlobalsSize = 2048
+	StackLim             = 2048
+	GlobalsSize          = 2048
+	ActivationRecordSize = 1024
 )
 
 var True = &object.Boolean{Value: true}
@@ -28,7 +29,6 @@ func isTruthy(obj object.Object) bool {
 }
 
 type VM struct {
-	instructions      code.Instructions
 	constants         []object.Object
 	stack             []object.Object
 	stackPointer      int
@@ -64,12 +64,13 @@ func (vm *VM) StackTop() object.Object {
 }
 
 func (vm *VM) StackTrace() string {
-	var res string = ""
+	var res string = "==STACK TRACE==\n"
 
 	for i := 0; i < vm.stackPointer; i++ {
 		res += fmt.Sprintf("%s\n", vm.stack[i])
 	}
 
+	res += "====\n"
 	return res
 }
 
@@ -92,13 +93,19 @@ func (vm *VM) popRecord() *ActivationRecord {
 }
 
 func New(bytecode *compiler.Bytecode) *VM {
-	return &VM{
-		instructions: bytecode.Instructions,
-		constants:    bytecode.Constants,
-		stack:        make([]object.Object, StackLim),
-		stackPointer: 0,
-		globals:      make([]object.Object, GlobalsSize),
+
+	mainFn := &code.CompiledFunction{Instructions: bytecode.Instructions}
+	mainFrame := NewFrame(mainFn)
+	vm := &VM{
+		constants:         bytecode.Constants,
+		stack:             make([]object.Object, StackLim),
+		stackPointer:      0,
+		globals:           make([]object.Object, GlobalsSize),
+		activationRecords: make([]*ActivationRecord, ActivationRecordSize),
+		recordPointer:     0,
 	}
+	vm.pushRecord(mainFrame)
+	return vm
 }
 
 func NewWithGlobalsStore(bytecode *compiler.Bytecode, s []object.Object) *VM {
@@ -108,12 +115,20 @@ func NewWithGlobalsStore(bytecode *compiler.Bytecode, s []object.Object) *VM {
 }
 
 func (vm *VM) Run() error {
-	for ip := 0; ip < len(vm.instructions); ip++ {
-		op := code.Opcode(vm.instructions[ip])
+	var ip int
+	var ins code.Instructions
+	var op code.Opcode
+
+	for vm.currentRecord().instructionPointer < len(vm.currentRecord().Instructions())-1 {
+		vm.currentRecord().instructionPointer++
+		ip = vm.currentRecord().instructionPointer
+		ins = vm.currentRecord().Instructions()
+
+		op = code.Opcode(ins[ip])
 		switch op {
 		case code.OpConstant:
-			constIndex := code.ReadUint16(vm.instructions[ip+1:])
-			ip += 2
+			constIndex := code.ReadUint16(ins[ip+1:])
+			vm.currentRecord().instructionPointer += 2
 
 			if err := vm.push(vm.constants[constIndex]); err != nil {
 				return err
@@ -158,33 +173,34 @@ func (vm *VM) Run() error {
 			vm.pop()
 
 		case code.OpJump:
-			pos := int(code.ReadUint16(vm.instructions[ip+1:]))
-			ip = pos - 1
+			pos := int(code.ReadUint16(ins[ip+1:]))
+			vm.currentRecord().instructionPointer = pos - 1
 
 		case code.OpJumpNotTruthy:
-			pos := int(code.ReadUint16(vm.instructions[ip+1:]))
-			ip += 2
+			pos := int(code.ReadUint16(ins[ip+1:]))
+			vm.currentRecord().instructionPointer += 2
 
 			condition := vm.pop()
 			if !isTruthy(condition) {
-				ip = pos - 1
+				vm.currentRecord().instructionPointer = pos - 1
 			}
 
 		case code.OpSetGlobal:
-			gIdx := code.ReadUint16(vm.instructions[ip+1:])
-			ip += 2
+			gIdx := code.ReadUint16(ins[ip+1:])
+			vm.currentRecord().instructionPointer += 2
 			vm.globals[gIdx] = vm.pop()
 
 		case code.OpGetGlobal:
-			gIdx := code.ReadUint16(vm.instructions[ip+1:])
-			ip += 2
+			gIdx := code.ReadUint16(ins[ip+1:])
+			vm.currentRecord().instructionPointer += 2
 			if err := vm.push(vm.globals[gIdx]); err != nil {
 				return err
 			}
 
 		case code.OpArray:
-			numElems := int(code.ReadUint16(vm.instructions[ip+1:]))
-			ip += 2
+			numElems := int(code.ReadUint16(ins[ip+1:]))
+			vm.currentRecord().instructionPointer += 2
+
 			arr := vm.buildArray(vm.stackPointer-numElems, vm.stackPointer)
 			vm.stackPointer = vm.stackPointer - numElems
 			if err := vm.push(arr); err != nil {
@@ -192,8 +208,8 @@ func (vm *VM) Run() error {
 			}
 
 		case code.OpHash:
-			numElems := int(code.ReadUint16(vm.instructions[ip+1:]))
-			ip += 2
+			numElems := int(code.ReadUint16(ins[ip+1:]))
+			vm.currentRecord().instructionPointer += 2
 
 			hash, err := vm.buildHash(vm.stackPointer-numElems, vm.stackPointer)
 
