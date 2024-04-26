@@ -16,14 +16,6 @@ var True = &object.Boolean{Value: true}
 var False = &object.Boolean{Value: false}
 var Null = &object.Null{}
 
-type VM struct {
-	instructions code.Instructions
-	constants    []object.Object
-	stack        []object.Object
-	stackPointer int
-	globals      []object.Object
-}
-
 func isTruthy(obj object.Object) bool {
 	switch obj := obj.(type) {
 	case *object.Boolean:
@@ -33,6 +25,70 @@ func isTruthy(obj object.Object) bool {
 	default:
 		return true
 	}
+}
+
+type VM struct {
+	instructions      code.Instructions
+	constants         []object.Object
+	stack             []object.Object
+	stackPointer      int
+	globals           []object.Object
+	activationRecords []*ActivationRecord
+	recordPointer     int
+}
+
+func (vm *VM) push(o object.Object) error {
+	if vm.stackPointer >= StackLim {
+		return fmt.Errorf("stack overflow")
+	}
+	vm.stack[vm.stackPointer] = o
+	vm.stackPointer++
+	return nil
+}
+
+func (vm *VM) pop() object.Object {
+	if vm.stackPointer == 0 {
+		panic("stack is empty !!")
+	}
+
+	o := vm.stack[vm.stackPointer-1]
+	vm.stackPointer--
+	return o
+}
+
+func (vm *VM) StackTop() object.Object {
+	if vm.stackPointer == 0 {
+		return nil
+	}
+	return vm.stack[vm.stackPointer-1]
+}
+
+func (vm *VM) StackTrace() string {
+	var res string = ""
+
+	for i := 0; i < vm.stackPointer; i++ {
+		res += fmt.Sprintf("%s\n", vm.stack[i])
+	}
+
+	return res
+}
+
+func (vm *VM) LastPoppedStackElem() object.Object {
+	return vm.stack[vm.stackPointer]
+}
+
+func (vm *VM) currentRecord() *ActivationRecord {
+	return vm.activationRecords[vm.recordPointer-1]
+}
+
+func (vm *VM) pushRecord(ar *ActivationRecord) {
+	vm.activationRecords[vm.recordPointer] = ar
+	vm.recordPointer++
+}
+
+func (vm *VM) popRecord() *ActivationRecord {
+	vm.recordPointer--
+	return vm.activationRecords[vm.recordPointer]
 }
 
 func New(bytecode *compiler.Bytecode) *VM {
@@ -163,46 +219,6 @@ func (vm *VM) Run() error {
 
 	}
 	return nil
-}
-
-func (vm *VM) push(o object.Object) error {
-	if vm.stackPointer >= StackLim {
-		return fmt.Errorf("stack overflow")
-	}
-	vm.stack[vm.stackPointer] = o
-	vm.stackPointer++
-	return nil
-}
-
-func (vm *VM) pop() object.Object {
-	if vm.stackPointer == 0 {
-		panic("stack is empty !!")
-	}
-
-	o := vm.stack[vm.stackPointer-1]
-	vm.stackPointer--
-	return o
-}
-
-func (vm *VM) StackTop() object.Object {
-	if vm.stackPointer == 0 {
-		return nil
-	}
-	return vm.stack[vm.stackPointer-1]
-}
-
-func (vm *VM) StackTrace() string {
-	var res string = ""
-
-	for i := 0; i < vm.stackPointer; i++ {
-		res += fmt.Sprintf("%s\n", vm.stack[i])
-	}
-
-	return res
-}
-
-func (vm *VM) LastPoppedStackElem() object.Object {
-	return vm.stack[vm.stackPointer]
 }
 
 func (vm *VM) executeBinaryOperation(op code.Opcode) error {
