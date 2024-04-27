@@ -87,6 +87,8 @@ func (c *Compiler) Compile(node ast.Node) error {
 			return err
 		}
 
+		// at this point block statement -> list of expr statement will be done
+		// for the last expr statement we need to replace the OpPop with Return
 		if c.lastInstructionIsPop() {
 			c.replaceLastPopWithReturn()
 		} else if !c.lastInstructionIs(code.OpReturnValue) {
@@ -231,7 +233,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 		jumpPos := c.emit(code.OpJump, 9999)
 		afterConsequencePos := len(c.currentInstructions())
-		c.changeOperand(jumpNotTruthyPos, afterConsequencePos)
+		c.performBackPatch(jumpNotTruthyPos, afterConsequencePos)
 
 		if node.Alternative == nil { //backpatching jumpNotTruthy
 			c.emit(code.OpNull)
@@ -246,7 +248,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 		}
 
 		afterAlternativePos := len(c.currentInstructions())
-		c.changeOperand(jumpPos, afterAlternativePos)
+		c.performBackPatch(jumpPos, afterAlternativePos)
 
 	case *ast.BlockStatement:
 		for _, s := range node.Statements {
@@ -362,9 +364,9 @@ func (c *Compiler) replaceLastPopWithReturn() {
 	c.scopes[c.scopeIndex].lastInstruction.Opcode = code.OpReturnValue
 }
 
-func (c *Compiler) changeOperand(opPos int, operand int) {
+func (c *Compiler) performBackPatch(opPos int, operand ...int) {
 	op := code.Opcode(c.currentInstructions()[opPos])
-	newInstruction := code.Make(op, operand)
+	newInstruction := code.Make(op, operand...)
 	c.replaceInstruction(opPos, newInstruction)
 }
 
@@ -389,7 +391,6 @@ func (c *Compiler) enterScope() {
 
 func (c *Compiler) leaveScope() code.Instructions {
 	instructions := c.currentInstructions()
-
 	c.scopes = c.scopes[:len(c.scopes)-1]
 	c.scopeIndex--
 	c.symbolTable = c.symbolTable.Outer
