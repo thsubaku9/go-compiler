@@ -9,6 +9,7 @@ const COMPILED_FUNCTION_OBJ = "COMPILED_FUNCTION_OBJ"
 
 type CompiledFunction struct {
 	Instructions Instructions
+	NumLocals    int
 }
 
 func (cf *CompiledFunction) Type() object.ObjectType { return COMPILED_FUNCTION_OBJ }

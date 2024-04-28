@@ -67,7 +67,7 @@ func (vm *VM) StackTrace() string {
 	var res string = "==STACK TRACE[" + fmt.Sprint(vm.stackPointer) + "]==\n"
 
 	for i := 0; i < vm.stackPointer; i++ {
-		res += fmt.Sprintf("%s\n", vm.stack[i])
+		res += fmt.Sprintf("%T --> %v\n", vm.stack[i], vm.stack[i])
 	}
 
 	res += "====\n"
@@ -95,7 +95,7 @@ func (vm *VM) popRecord() *ActivationRecord {
 func New(bytecode *compiler.Bytecode) *VM {
 
 	mainFn := &code.CompiledFunction{Instructions: bytecode.Instructions}
-	mainRecord := NewRecord(mainFn)
+	mainRecord := NewRecord(mainFn, 0)
 	vm := &VM{
 		constants:         bytecode.Constants,
 		stack:             make([]object.Object, StackLim),
@@ -197,6 +197,21 @@ func (vm *VM) Run() error {
 				return err
 			}
 
+		case code.OpSetLocal:
+			localIndex := code.ReadUint8(ins[ip+1:])
+			vm.currentRecord().instructionPointer += 1
+			record := vm.currentRecord()
+			vm.stack[record.basePointer+int(localIndex)] = vm.pop()
+
+		case code.OpGetLocal:
+			localIndex := code.ReadUint8(ins[ip+1:])
+			vm.currentRecord().instructionPointer += 1
+			record := vm.currentRecord()
+
+			if err := vm.push(vm.stack[record.basePointer+int(localIndex)]); err != nil {
+				return err
+			}
+
 		case code.OpArray:
 			numElems := int(code.ReadUint16(ins[ip+1:]))
 			vm.currentRecord().instructionPointer += 2
@@ -236,21 +251,24 @@ func (vm *VM) Run() error {
 				return fmt.Errorf("calling non-function")
 			}
 
-			ar := NewRecord(fn)
+			ar := NewRecord(fn, vm.stackPointer)
 			vm.pushRecord(ar)
+			vm.stackPointer = ar.basePointer + fn.NumLocals
 
 		case code.OpReturnValue:
 			returnValue := vm.pop()
-			vm.popRecord()
-			vm.pop() // removing the function from the global stack
+			record := vm.popRecord()
+			vm.stackPointer = record.basePointer - 1
+			// vm.pop() // removing the function from the global stack
 
 			if err := vm.push(returnValue); err != nil {
 				return err
 			}
 
 		case code.OpReturn:
-			vm.popRecord()
-			vm.pop()
+			record := vm.popRecord()
+			vm.stackPointer = record.basePointer - 1
+			// vm.pop() // removing the function from the global stack
 			err := vm.push(Null)
 			if err != nil {
 				return err
