@@ -245,6 +245,7 @@ func TestGlobalLetStmts(t *testing.T) {
 		{"let one = 1; one", 1},
 		{"let one = 1; let two = 2; one + two", 3},
 		{"let one = 1; let two = one + one; one + two", 3},
+		{"let a=1; let b=2; let a=a+b; a", 3},
 	}
 	runVmTests(t, tests)
 }

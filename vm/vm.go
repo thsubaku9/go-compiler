@@ -246,6 +246,7 @@ func (vm *VM) Run() error {
 			}
 
 		case code.OpCall:
+			vm.currentRecord().instructionPointer += 1
 			fn, ok := vm.stack[vm.stackPointer-1].(*code.CompiledFunction)
 			if !ok {
 				return fmt.Errorf("calling non-function")
