@@ -83,6 +83,10 @@ func (c *Compiler) Compile(node ast.Node) error {
 	case *ast.FunctionBlock:
 		c.enterScope()
 
+		for _, p := range node.Parameters {
+			c.symbolTable.Define(p.Value)
+		}
+
 		if err := c.Compile(node.Body); err != nil {
 			return err
 		}
@@ -104,7 +108,14 @@ func (c *Compiler) Compile(node ast.Node) error {
 		if err := c.Compile(node.Function); err != nil {
 			return err
 		}
-		c.emit(code.OpCall)
+
+		for _, a := range node.Arguments {
+			err := c.Compile(a)
+			if err != nil {
+				return err
+			}
+		}
+		c.emit(code.OpCall, len(node.Arguments))
 
 	case *ast.ReturnStatement:
 		if err := c.Compile(node.ReturnValue); err != nil {

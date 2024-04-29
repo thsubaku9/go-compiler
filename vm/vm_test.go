@@ -457,3 +457,42 @@ func TestCallingFunctionsWithBindings(t *testing.T) {
 	}
 	runVmTests(t, tests)
 }
+
+func TestCallingFunctionsWithArgumentsAndBindings(t *testing.T) {
+	tests := []vmTestCase{
+		{
+			input: `let identity = fn(a) { a; };
+	identity(4);
+	`,
+			expected: 4,
+		},
+		{
+			input: `
+	let sum = fn(a, b) { a + b; };
+	sum(1, 2);
+	`,
+			expected: 3,
+		},
+	}
+	runVmTests(t, tests)
+}
+
+func TestNestedIdentiferAccess(t *testing.T) {
+	// this currently fails because functions aren't aware on what level the Local value scopes to (is binded)
+	tests := []vmTestCase{
+		{
+			input: `
+			   let one = fn() { 
+				let uno = 1; 
+					fn() {
+						let two = 2;
+						uno + two;
+					}()
+				};
+			   one();
+			   `, expected: 3,
+		},
+	}
+
+	runVmTests(t, tests)
+}
