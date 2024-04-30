@@ -8,21 +8,14 @@ import (
 )
 
 const (
-	StackLim    = 2048
-	GlobalsSize = 2048
+	StackLim             = 2048
+	GlobalsSize          = 2048
+	ActivationRecordSize = 1024
 )
 
 var True = &object.Boolean{Value: true}
 var False = &object.Boolean{Value: false}
 var Null = &object.Null{}
-
-type VM struct {
-	instructions code.Instructions
-	constants    []object.Object
-	stack        []object.Object
-	stackPointer int
-	globals      []object.Object
-}
 
 func isTruthy(obj object.Object) bool {
 	switch obj := obj.(type) {
@@ -35,14 +28,84 @@ func isTruthy(obj object.Object) bool {
 	}
 }
 
-func New(bytecode *compiler.Bytecode) *VM {
-	return &VM{
-		instructions: bytecode.Instructions,
-		constants:    bytecode.Constants,
-		stack:        make([]object.Object, StackLim),
-		stackPointer: 0,
-		globals:      make([]object.Object, GlobalsSize),
+type VM struct {
+	constants         []object.Object
+	stack             []object.Object
+	stackPointer      int
+	globals           []object.Object
+	activationRecords []*ActivationRecord
+	recordPointer     int
+}
+
+func (vm *VM) push(o object.Object) error {
+	if vm.stackPointer >= StackLim {
+		return fmt.Errorf("stack overflow")
 	}
+	vm.stack[vm.stackPointer] = o
+	vm.stackPointer++
+	return nil
+}
+
+func (vm *VM) pop() object.Object {
+	if vm.stackPointer == 0 {
+		panic("stack is empty !!")
+	}
+
+	o := vm.stack[vm.stackPointer-1]
+	vm.stackPointer--
+	return o
+}
+
+func (vm *VM) StackTop() object.Object {
+	if vm.stackPointer == 0 {
+		return nil
+	}
+	return vm.stack[vm.stackPointer-1]
+}
+
+func (vm *VM) StackTrace() string {
+	var res string = "==STACK TRACE[" + fmt.Sprint(vm.stackPointer) + "]==\n"
+
+	for i := 0; i < vm.stackPointer; i++ {
+		res += fmt.Sprintf("%T --> %v\n", vm.stack[i], vm.stack[i])
+	}
+
+	res += "====\n"
+	return res
+}
+
+func (vm *VM) LastPoppedStackElem() object.Object {
+	return vm.stack[vm.stackPointer]
+}
+
+func (vm *VM) currentRecord() *ActivationRecord {
+	return vm.activationRecords[vm.recordPointer-1]
+}
+
+func (vm *VM) pushRecord(ar *ActivationRecord) {
+	vm.activationRecords[vm.recordPointer] = ar
+	vm.recordPointer++
+}
+
+func (vm *VM) popRecord() *ActivationRecord {
+	vm.recordPointer--
+	return vm.activationRecords[vm.recordPointer]
+}
+
+func New(bytecode *compiler.Bytecode) *VM {
+
+	mainFn := &code.CompiledFunction{Instructions: bytecode.Instructions}
+	mainRecord := NewRecord(mainFn, 0)
+	vm := &VM{
+		constants:         bytecode.Constants,
+		stack:             make([]object.Object, StackLim),
+		stackPointer:      0,
+		globals:           make([]object.Object, GlobalsSize),
+		activationRecords: make([]*ActivationRecord, ActivationRecordSize),
+		recordPointer:     0,
+	}
+	vm.pushRecord(mainRecord)
+	return vm
 }
 
 func NewWithGlobalsStore(bytecode *compiler.Bytecode, s []object.Object) *VM {
@@ -52,12 +115,20 @@ func NewWithGlobalsStore(bytecode *compiler.Bytecode, s []object.Object) *VM {
 }
 
 func (vm *VM) Run() error {
-	for ip := 0; ip < len(vm.instructions); ip++ {
-		op := code.Opcode(vm.instructions[ip])
+	var ip int
+	var ins code.Instructions
+	var op code.Opcode
+
+	for vm.currentRecord().instructionPointer < len(vm.currentRecord().Instructions())-1 {
+		vm.currentRecord().instructionPointer++
+		ip = vm.currentRecord().instructionPointer
+		ins = vm.currentRecord().Instructions()
+
+		op = code.Opcode(ins[ip])
 		switch op {
 		case code.OpConstant:
-			constIndex := code.ReadUint16(vm.instructions[ip+1:])
-			ip += 2
+			constIndex := code.ReadUint16(ins[ip+1:])
+			vm.currentRecord().instructionPointer += 2
 
 			if err := vm.push(vm.constants[constIndex]); err != nil {
 				return err
@@ -102,33 +173,49 @@ func (vm *VM) Run() error {
 			vm.pop()
 
 		case code.OpJump:
-			pos := int(code.ReadUint16(vm.instructions[ip+1:]))
-			ip = pos - 1
+			pos := int(code.ReadUint16(ins[ip+1:]))
+			vm.currentRecord().instructionPointer = pos - 1
 
 		case code.OpJumpNotTruthy:
-			pos := int(code.ReadUint16(vm.instructions[ip+1:]))
-			ip += 2
+			pos := int(code.ReadUint16(ins[ip+1:]))
+			vm.currentRecord().instructionPointer += 2
 
 			condition := vm.pop()
 			if !isTruthy(condition) {
-				ip = pos - 1
+				vm.currentRecord().instructionPointer = pos - 1
 			}
 
 		case code.OpSetGlobal:
-			gIdx := code.ReadUint16(vm.instructions[ip+1:])
-			ip += 2
+			gIdx := code.ReadUint16(ins[ip+1:])
+			vm.currentRecord().instructionPointer += 2
 			vm.globals[gIdx] = vm.pop()
 
 		case code.OpGetGlobal:
-			gIdx := code.ReadUint16(vm.instructions[ip+1:])
-			ip += 2
+			gIdx := code.ReadUint16(ins[ip+1:])
+			vm.currentRecord().instructionPointer += 2
 			if err := vm.push(vm.globals[gIdx]); err != nil {
 				return err
 			}
 
+		case code.OpSetLocal:
+			localIndex := code.ReadUint8(ins[ip+1:])
+			vm.currentRecord().instructionPointer += 1
+			record := vm.currentRecord()
+			vm.stack[record.basePointer+int(localIndex)] = vm.pop()
+
+		case code.OpGetLocal:
+			localIndex := code.ReadUint8(ins[ip+1:])
+			vm.currentRecord().instructionPointer += 1
+			record := vm.currentRecord()
+
+			if err := vm.push(vm.stack[record.basePointer+int(localIndex)]); err != nil {
+				return err
+			}
+
 		case code.OpArray:
-			numElems := int(code.ReadUint16(vm.instructions[ip+1:]))
-			ip += 2
+			numElems := int(code.ReadUint16(ins[ip+1:]))
+			vm.currentRecord().instructionPointer += 2
+
 			arr := vm.buildArray(vm.stackPointer-numElems, vm.stackPointer)
 			vm.stackPointer = vm.stackPointer - numElems
 			if err := vm.push(arr); err != nil {
@@ -136,8 +223,8 @@ func (vm *VM) Run() error {
 			}
 
 		case code.OpHash:
-			numElems := int(code.ReadUint16(vm.instructions[ip+1:]))
-			ip += 2
+			numElems := int(code.ReadUint16(ins[ip+1:]))
+			vm.currentRecord().instructionPointer += 2
 
 			hash, err := vm.buildHash(vm.stackPointer-numElems, vm.stackPointer)
 
@@ -147,62 +234,57 @@ func (vm *VM) Run() error {
 
 			vm.stackPointer = vm.stackPointer - numElems
 
-			err = vm.push(hash)
-			if err != nil {
+			if err = vm.push(hash); err != nil {
 				return err
 			}
 
 		case code.OpIndex:
 			index := vm.pop()
 			left := vm.pop()
-			err := vm.executeIndexExpression(left, index)
+			if err := vm.executeIndexExpression(left, index); err != nil {
+				return err
+			}
+
+		case code.OpCall:
+			numArgs := code.ReadUint8(ins[ip+1:])
+			vm.currentRecord().instructionPointer += 1
+
+			fn, ok := vm.stack[vm.stackPointer-1-int(numArgs)].(*code.CompiledFunction)
+			if !ok {
+				return fmt.Errorf("calling non-function")
+			}
+
+			if numArgs != uint8(fn.NumParameters) {
+				return fmt.Errorf("wrong number of arguments: want=%d, got=%d", fn.NumParameters, numArgs)
+			}
+
+			ar := NewRecord(fn, vm.stackPointer-int(numArgs))
+			vm.pushRecord(ar)
+			vm.stackPointer = ar.basePointer + fn.NumLocals
+
+		case code.OpReturnValue:
+			returnValue := vm.pop()
+			record := vm.popRecord()
+			vm.stackPointer = record.basePointer - 1
+			// vm.pop() // removing the function from the global stack
+
+			if err := vm.push(returnValue); err != nil {
+				return err
+			}
+
+		case code.OpReturn:
+			record := vm.popRecord()
+			vm.stackPointer = record.basePointer - 1
+			// vm.pop() // removing the function from the global stack
+			err := vm.push(Null)
 			if err != nil {
 				return err
 			}
+
 		}
 
 	}
 	return nil
-}
-
-func (vm *VM) push(o object.Object) error {
-	if vm.stackPointer >= StackLim {
-		return fmt.Errorf("stack overflow")
-	}
-	vm.stack[vm.stackPointer] = o
-	vm.stackPointer++
-	return nil
-}
-
-func (vm *VM) pop() object.Object {
-	if vm.stackPointer == 0 {
-		panic("stack is empty !!")
-	}
-
-	o := vm.stack[vm.stackPointer-1]
-	vm.stackPointer--
-	return o
-}
-
-func (vm *VM) StackTop() object.Object {
-	if vm.stackPointer == 0 {
-		return nil
-	}
-	return vm.stack[vm.stackPointer-1]
-}
-
-func (vm *VM) StackTrace() string {
-	var res string = ""
-
-	for i := 0; i < vm.stackPointer; i++ {
-		res += fmt.Sprintf("%s\n", vm.stack[i])
-	}
-
-	return res
-}
-
-func (vm *VM) LastPoppedStackElem() object.Object {
-	return vm.stack[vm.stackPointer]
 }
 
 func (vm *VM) executeBinaryOperation(op code.Opcode) error {
