@@ -8,8 +8,9 @@ import (
 const COMPILED_FUNCTION_OBJ = "COMPILED_FUNCTION_OBJ"
 
 type CompiledFunction struct {
-	Instructions Instructions
-	NumLocals    int
+	Instructions  Instructions
+	NumLocals     int
+	NumParameters int
 }
 
 func (cf *CompiledFunction) Type() object.ObjectType { return COMPILED_FUNCTION_OBJ }

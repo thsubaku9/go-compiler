@@ -246,13 +246,19 @@ func (vm *VM) Run() error {
 			}
 
 		case code.OpCall:
+			numArgs := code.ReadUint8(ins[ip+1:])
 			vm.currentRecord().instructionPointer += 1
-			fn, ok := vm.stack[vm.stackPointer-1].(*code.CompiledFunction)
+
+			fn, ok := vm.stack[vm.stackPointer-1-int(numArgs)].(*code.CompiledFunction)
 			if !ok {
 				return fmt.Errorf("calling non-function")
 			}
 
-			ar := NewRecord(fn, vm.stackPointer)
+			if numArgs != uint8(fn.NumParameters) {
+				return fmt.Errorf("wrong number of arguments: want=%d, got=%d", fn.NumParameters, numArgs)
+			}
+
+			ar := NewRecord(fn, vm.stackPointer-int(numArgs))
 			vm.pushRecord(ar)
 			vm.stackPointer = ar.basePointer + fn.NumLocals
 

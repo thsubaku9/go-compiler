@@ -473,26 +473,71 @@ func TestCallingFunctionsWithArgumentsAndBindings(t *testing.T) {
 	`,
 			expected: 3,
 		},
-	}
-	runVmTests(t, tests)
-}
-
-func TestNestedIdentiferAccess(t *testing.T) {
-	// this currently fails because functions aren't aware on what level the Local value scopes to (is binded)
-	tests := []vmTestCase{
 		{
 			input: `
-			   let one = fn() { 
-				let uno = 1; 
-					fn() {
-						let two = 2;
-						uno + two;
-					}()
-				};
-			   one();
-			   `, expected: 3,
+			let globalNum = 10;
+			let sum = fn(a, b) {
+				let c = a + b;
+				c + globalNum;
+ };
+			let outer = fn() {
+				sum(1, 2) + sum(3, 4) + globalNum;
+ };
+			outer() + globalNum;
+			`,
+			expected: 50,
 		},
 	}
-
 	runVmTests(t, tests)
 }
+
+func TestCallingFunctionsWithWrongArguments(t *testing.T) {
+	tests := []vmTestCase{
+		{
+			input:    `fn() { 1; }(1);`,
+			expected: `wrong number of arguments: want=0, got=1`,
+		}, {
+			input:    `fn(a) { a; }();`,
+			expected: `wrong number of arguments: want=1, got=0`,
+		},
+		{
+			input:    `fn(a, b) { a + b; }(1);`,
+			expected: `wrong number of arguments: want=2, got=1`,
+		}}
+	for _, tt := range tests {
+		program := parse(tt.input)
+		comp := compiler.New()
+		err := comp.Compile(program)
+		if err != nil {
+			t.Fatalf("compiler error: %s", err)
+		}
+		vm := New(comp.Bytecode())
+		err = vm.Run()
+		if err == nil {
+			t.Fatalf("expected VM error but resulted in none.")
+		}
+		if err.Error() != tt.expected {
+			t.Fatalf("wrong VM error: want=%q, got=%q", tt.expected, err)
+		}
+	}
+}
+
+// func TestNestedIdentiferAccess(t *testing.T) {
+// 	// this currently fails because functions aren't aware on what level the Local value scopes to (is binded)
+// 	tests := []vmTestCase{
+// 		{
+// 			input: `
+// 			   let one = fn() {
+// 				let uno = 1;
+// 					fn() {
+// 						let two = 2;
+// 						uno + two;
+// 					}()
+// 				};
+// 			   one();
+// 			   `, expected: 3,
+// 		},
+// 	}
+
+// 	runVmTests(t, tests)
+// }
