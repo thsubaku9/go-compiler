@@ -102,7 +102,9 @@ func (c *Compiler) Compile(node ast.Node) error {
 		numLocals := c.symbolTable.numDefs
 		fnIns := c.leaveScope()
 		compiledFn := &code.CompiledFunction{Instructions: fnIns, NumLocals: numLocals, NumParameters: len(node.Parameters)}
-		c.emit(code.OpConstant, c.addConstant(compiledFn))
+		c.emit(code.OpClosure, c.addConstant(compiledFn), 0)
+		// functions are also being treated as global scope closures
+		//c.emit(code.OpConstant, c.addConstant(compiledFn))
 
 	case *ast.CallExpression:
 		if err := c.Compile(node.Function); err != nil {
