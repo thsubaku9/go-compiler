@@ -3,9 +3,10 @@ package compiler
 type SymbolScope string
 
 const (
-	GlobalScope SymbolScope = "G"
-	LocalScope  SymbolScope = "L"
-	FreeScope   SymbolScope = "F"
+	GlobalScope   SymbolScope = "G"
+	LocalScope    SymbolScope = "L"
+	FreeScope     SymbolScope = "F"
+	FunctionScope SymbolScope = "FN"
 )
 
 type Symbol struct {
@@ -38,6 +39,12 @@ func (symt *SymbolTable) Define(val string) Symbol {
 	}
 	symt.store[val] = symbol
 	symt.numDefs++
+	return symbol
+}
+
+func (s *SymbolTable) DefineFunctionName(name string) Symbol {
+	symbol := Symbol{Name: name, Index: 0, Scope: FunctionScope}
+	s.store[name] = symbol
 	return symbol
 }
 

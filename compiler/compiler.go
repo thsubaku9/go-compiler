@@ -70,7 +70,25 @@ func (c *Compiler) Compile(node ast.Node) error {
 		c.emit(code.OpPop)
 
 	case *ast.LetStatement:
+		// symbol, ok := c.symbolTable.Resolve(node.Name.Value)
+
+		// if !ok {
+		// 	symbol = c.symbolTable.Define(node.Name.Value)
+		// }
+
 		symbol := c.symbolTable.Define(node.Name.Value)
+
+		switch nodeValue := node.Value.(type) {
+		case *ast.FunctionBlock:
+
+			var namedFnBlock *code.NamedFunctionBlock = &code.NamedFunctionBlock{
+				FunctionBlock: ast.FunctionBlock{Token: nodeValue.Token, Body: nodeValue.Body, Parameters: nodeValue.Parameters},
+				Name:          node.Name.Value,
+			}
+
+			node.Value = namedFnBlock
+		}
+
 		if err := c.Compile(node.Value); err != nil {
 			return err
 		}
@@ -80,6 +98,47 @@ func (c *Compiler) Compile(node ast.Node) error {
 			c.emit(code.OpSetLocal, symbol.Index)
 		}
 
+	case *code.NamedFunctionBlock:
+		// todo -> clean this up
+		c.enterScope()
+
+		if node.Name != "" {
+			c.symbolTable.DefineFunctionName(node.Name)
+		}
+
+		for _, p := range node.Parameters {
+			c.symbolTable.Define(p.Value)
+		}
+
+		if err := c.Compile(node.Body); err != nil {
+			return err
+		}
+
+		// at this point block statement -> list of expr statement will be done
+		// for the last expr statement we need to replace the OpPop with Return
+		if c.lastInstructionIsPop() {
+			c.replaceLastPopWithReturn()
+		} else if !c.lastInstructionIs(code.OpReturnValue) {
+			c.emit(code.OpReturn)
+		}
+
+		// capture all the free symbols that will be used
+		freeSymbols := c.symbolTable.FreeSymbols
+		numLocals := c.symbolTable.numDefs
+		fnIns := c.leaveScope()
+
+		for _, s := range freeSymbols {
+			c.loadSymbol(s)
+			// three cases -> g => load from global; l => get from hole in stack; f => get from free index
+			// loading into free index is taken care of by vm which loads the data to the stack and copies in order to free index
+
+		}
+
+		compiledFn := &code.CompiledFunction{Instructions: fnIns, NumLocals: numLocals, NumParameters: len(node.Parameters)}
+		c.emit(code.OpClosure, c.addConstant(compiledFn), len(freeSymbols))
+		// functions are also being treated as global scope closures
+		//c.emit(code.OpConstant, c.addConstant(compiledFn))
+		// todo -> end of clean this up
 	case *ast.FunctionBlock:
 		c.enterScope()
 
@@ -424,5 +483,7 @@ func (c *Compiler) loadSymbol(s Symbol) {
 		c.emit(code.OpGetLocal, s.Index)
 	case FreeScope:
 		c.emit(code.OpGetFree, s.Index)
+	case FunctionScope:
+		c.emit(code.OpCurrentClosure)
 	}
 }

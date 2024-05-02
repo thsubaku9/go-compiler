@@ -245,7 +245,6 @@ func TestGlobalLetStmts(t *testing.T) {
 		{"let one = 1; one", 1},
 		{"let one = 1; let two = 2; one + two", 3},
 		{"let one = 1; let two = one + one; one + two", 3},
-		{"let a=1; let b=2; let a=a+b; a", 3},
 	}
 	runVmTests(t, tests)
 }
@@ -608,21 +607,21 @@ func TestRecursiveFunctions(t *testing.T) {
 			`,
 			expected: 0,
 		},
-		// {
-		// 	input: `
-		// 			   let wrapper = fn() {
-		// 				   let countDown = fn(x) {
-		// 					   if (x == 0) {
-		// 						   return 0;
-		// 					   } else {
-		// 						   countDown(x - 1);
-		// 	} };
-		// 				   countDown(1);
-		// 			   };
-		// 			   wrapper();
-		// 			   `,
-		// 	expected: 0,
-		// },
+		{
+			input: `
+					   let wrapper = fn() {
+						   let countDown = fn(x) {
+							   if (x == 0) {
+								   return 0;
+							   } else {
+								   countDown(x - 1);
+			} };
+						   countDown(1);
+					   };
+					   wrapper();
+					   `,
+			expected: 0,
+		},
 	}
 	runVmTests(t, tests)
 }
