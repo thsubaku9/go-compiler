@@ -70,10 +70,10 @@ func (c *Compiler) Compile(node ast.Node) error {
 		c.emit(code.OpPop)
 
 	case *ast.LetStatement:
+		symbol := c.symbolTable.Define(node.Name.Value)
 		if err := c.Compile(node.Value); err != nil {
 			return err
 		}
-		symbol := c.symbolTable.Define(node.Name.Value)
 		if symbol.Scope == GlobalScope {
 			c.emit(code.OpSetGlobal, symbol.Index)
 		} else {
@@ -99,12 +99,16 @@ func (c *Compiler) Compile(node ast.Node) error {
 			c.emit(code.OpReturn)
 		}
 
+		// capture all the free symbols that will be used
 		freeSymbols := c.symbolTable.FreeSymbols
 		numLocals := c.symbolTable.numDefs
 		fnIns := c.leaveScope()
 
 		for _, s := range freeSymbols {
 			c.loadSymbol(s)
+			// three cases -> g => load from global; l => get from hole in stack; f => get from free index
+			// loading into free index is taken care of by vm which loads the data to the stack and copies in order to free index
+
 		}
 
 		compiledFn := &code.CompiledFunction{Instructions: fnIns, NumLocals: numLocals, NumParameters: len(node.Parameters)}
