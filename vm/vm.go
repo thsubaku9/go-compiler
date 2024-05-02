@@ -95,7 +95,8 @@ func (vm *VM) popRecord() *ActivationRecord {
 func New(bytecode *compiler.Bytecode) *VM {
 
 	mainFn := &code.CompiledFunction{Instructions: bytecode.Instructions}
-	mainRecord := NewRecord(mainFn, 0)
+	mainClosure := &code.Closure{Fn: mainFn}
+	mainRecord := NewRecord(mainClosure, 0)
 	vm := &VM{
 		constants:         bytecode.Constants,
 		stack:             make([]object.Object, StackLim),
@@ -249,18 +250,27 @@ func (vm *VM) Run() error {
 			numArgs := code.ReadUint8(ins[ip+1:])
 			vm.currentRecord().instructionPointer += 1
 
-			fn, ok := vm.stack[vm.stackPointer-1-int(numArgs)].(*code.CompiledFunction)
+			cl, ok := vm.stack[vm.stackPointer-1-int(numArgs)].(*code.Closure)
 			if !ok {
 				return fmt.Errorf("calling non-function")
 			}
 
-			if numArgs != uint8(fn.NumParameters) {
-				return fmt.Errorf("wrong number of arguments: want=%d, got=%d", fn.NumParameters, numArgs)
+			if numArgs != uint8(cl.Fn.NumParameters) {
+				return fmt.Errorf("wrong number of arguments: want=%d, got=%d", cl.Fn.NumParameters, numArgs)
 			}
 
-			ar := NewRecord(fn, vm.stackPointer-int(numArgs))
+			ar := NewRecord(cl, vm.stackPointer-int(numArgs))
 			vm.pushRecord(ar)
-			vm.stackPointer = ar.basePointer + fn.NumLocals
+			vm.stackPointer = ar.basePointer + cl.Fn.NumLocals
+
+		case code.OpClosure:
+			constIndex := code.ReadUint16(ins[ip+1:])
+			_ = code.ReadUint8(ins[ip+3:])
+			vm.currentRecord().instructionPointer += 3
+			err := vm.pushClosure(int(constIndex))
+			if err != nil {
+				return err
+			}
 
 		case code.OpReturnValue:
 			returnValue := vm.pop()
@@ -460,4 +470,15 @@ func (vm *VM) executeHashIndex(hash, index object.Object) error {
 	}
 	return vm.push(pair.Value)
 
+}
+
+func (vm *VM) pushClosure(constIndex int) error {
+	constant := vm.constants[constIndex]
+	function, ok := constant.(*code.CompiledFunction)
+
+	if !ok {
+		return fmt.Errorf("not a function: %+v", constant)
+	}
+	closure := &code.Closure{Fn: function}
+	return vm.push(closure)
 }
