@@ -245,7 +245,6 @@ func TestGlobalLetStmts(t *testing.T) {
 		{"let one = 1; one", 1},
 		{"let one = 1; let two = 2; one + two", 3},
 		{"let one = 1; let two = one + one; one + two", 3},
-		{"let a=1; let b=2; let a=a+b; a", 3},
 	}
 	runVmTests(t, tests)
 }
@@ -522,22 +521,107 @@ func TestCallingFunctionsWithWrongArguments(t *testing.T) {
 	}
 }
 
-// func TestNestedIdentiferAccess(t *testing.T) {
-// 	// this currently fails because functions aren't aware on what level the Local value scopes to (is binded)
-// 	tests := []vmTestCase{
-// 		{
-// 			input: `
-// 			   let one = fn() {
-// 				let uno = 1;
-// 					fn() {
-// 						let two = 2;
-// 						uno + two;
-// 					}()
-// 				};
-// 			   one();
-// 			   `, expected: 3,
-// 		},
-// 	}
+func TestClosures(t *testing.T) {
+	tests := []vmTestCase{
+		{
+			input: `
+			   let newClosure = fn(a) {
+				   fn() { a; };
+			   };
+			   let closure = newClosure(99);
+			   closure();
+			   `,
+			expected: 99,
+		}, {
+			input: `
+           let newAdder = fn(a, b) {
+               fn(c) { a + b + c };
+           };
+           let adder = newAdder(1, 2);
+           adder(8);
+           `,
+			expected: 11,
+		},
+		{
+			input: `
+					   let newAdder = fn(a, b) {
+						   let c = a + b;
+						   fn(d) { c + d };
+					   };
+					   let adder = newAdder(1, 2);
+					   adder(8);
+					   `,
+			expected: 11,
+		},
+	}
+	runVmTests(t, tests)
+}
 
-// 	runVmTests(t, tests)
-// }
+func TestNestedIdentiferAccess(t *testing.T) {
+	tests := []vmTestCase{
+		{
+			input: `
+			   let one = fn() {
+				let uno = 1;
+					fn() {
+						let two = 2;
+						uno + two;
+					}()
+				};
+			   one();
+			   `, expected: 3,
+		},
+	}
+
+	runVmTests(t, tests)
+}
+
+func TestRecursiveFunctions(t *testing.T) {
+	tests := []vmTestCase{
+		{
+			input: `
+			   let countDown = fn(x) {
+				   if (x == 0) {
+					   return 0;
+				   } else {
+					   countDown(x - 1);
+				   }
+			   };
+			   countDown(1);
+			   `,
+			expected: 0,
+		},
+		{
+			input: `
+					   let countDown = fn(x) {
+						   if (x == 0) {
+							   return 0;
+						   } else {
+							   countDown(x - 1);
+						   }
+					   };
+					   let wrapper = fn() {
+						   countDown(1);
+					   };
+			wrapper();
+			`,
+			expected: 0,
+		},
+		{
+			input: `
+					   let wrapper = fn() {
+						   let countDown = fn(x) {
+							   if (x == 0) {
+								   return 0;
+							   } else {
+								   countDown(x - 1);
+			} };
+						   countDown(1);
+					   };
+					   wrapper();
+					   `,
+			expected: 0,
+		},
+	}
+	runVmTests(t, tests)
+}

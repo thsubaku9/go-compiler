@@ -3,18 +3,18 @@ package vm
 import "monkey-c/code"
 
 type ActivationRecord struct {
-	fn                 *code.CompiledFunction
+	cl                 *code.Closure
 	instructionPointer int
 	basePointer        int
 }
 
 func (ar *ActivationRecord) Instructions() code.Instructions {
-	return ar.fn.Instructions
+	return ar.cl.Fn.Instructions
 }
 
-func NewRecord(fn *code.CompiledFunction, basePointer int) *ActivationRecord {
+func NewRecord(cl *code.Closure, basePointer int) *ActivationRecord {
 	return &ActivationRecord{
-		fn:                 fn,
+		cl:                 cl,
 		instructionPointer: -1,
 		basePointer:        basePointer,
 	}

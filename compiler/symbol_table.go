@@ -3,8 +3,10 @@ package compiler
 type SymbolScope string
 
 const (
-	GlobalScope SymbolScope = "G"
-	LocalScope  SymbolScope = "L"
+	GlobalScope   SymbolScope = "G"
+	LocalScope    SymbolScope = "L"
+	FreeScope     SymbolScope = "F"
+	FunctionScope SymbolScope = "FN"
 )
 
 type Symbol struct {
@@ -14,13 +16,14 @@ type Symbol struct {
 }
 
 type SymbolTable struct {
-	Outer   *SymbolTable
-	store   map[string]Symbol
-	numDefs int
+	Outer       *SymbolTable
+	FreeSymbols []Symbol
+	store       map[string]Symbol
+	numDefs     int
 }
 
 func NewSymbolTable() *SymbolTable {
-	return &SymbolTable{store: make(map[string]Symbol)}
+	return &SymbolTable{store: make(map[string]Symbol), FreeSymbols: []Symbol{}}
 }
 
 func NewEnclosedSymbolTable(outer *SymbolTable) *SymbolTable {
@@ -39,10 +42,31 @@ func (symt *SymbolTable) Define(val string) Symbol {
 	return symbol
 }
 
+func (s *SymbolTable) DefineFunctionName(name string) Symbol {
+	symbol := Symbol{Name: name, Index: 0, Scope: FunctionScope}
+	s.store[name] = symbol
+	return symbol
+}
+
+func (s *SymbolTable) defineFree(original Symbol) Symbol {
+	s.FreeSymbols = append(s.FreeSymbols, original)
+	symbol := Symbol{Name: original.Name, Index: len(s.FreeSymbols) - 1, Scope: FreeScope}
+	s.store[original.Name] = symbol
+	return symbol
+}
+
 func (symt *SymbolTable) Resolve(val string) (Symbol, bool) {
 	obj, ok := symt.store[val]
 	if !ok && symt.Outer != nil {
 		obj, ok = symt.Outer.Resolve(val)
+
+		if !ok || obj.Scope == GlobalScope {
+			return obj, ok
+		}
+
+		free := symt.defineFree(obj)
+		return free, true
+
 	}
 	return obj, ok
 }
