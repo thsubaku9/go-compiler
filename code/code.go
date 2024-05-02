@@ -67,6 +67,7 @@ const (
 	OpSetGlobal
 	OpGetLocal
 	OpSetLocal
+	OpGetFree
 	// CDT
 	OpArray
 	OpHash
@@ -105,6 +106,7 @@ var definitions = map[Opcode]*Definition{
 	OpSetGlobal:        {"OpSetGlobal", []int{2}},
 	OpGetLocal:         {"OpGetLocal", []int{1}},
 	OpSetLocal:         {"OpSetLocal", []int{1}},
+	OpGetFree:          {"OpGetFree", []int{1}},
 	OpArray:            {"OpArray", []int{2}},
 	OpHash:             {"OpHash", []int{2}},
 	OpIndex:            {"OpIndex", []int{}},
