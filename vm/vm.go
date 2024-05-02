@@ -213,6 +213,14 @@ func (vm *VM) Run() error {
 				return err
 			}
 
+		case code.OpGetFree:
+			freeIndex := code.ReadUint8(ins[ip+1:])
+			vm.currentRecord().instructionPointer += 1
+			currentClosure := vm.currentRecord().cl
+			if err := vm.push(currentClosure.Free[freeIndex]); err != nil {
+				return err
+			}
+
 		case code.OpArray:
 			numElems := int(code.ReadUint16(ins[ip+1:]))
 			vm.currentRecord().instructionPointer += 2
@@ -265,9 +273,9 @@ func (vm *VM) Run() error {
 
 		case code.OpClosure:
 			constIndex := code.ReadUint16(ins[ip+1:])
-			_ = code.ReadUint8(ins[ip+3:])
+			freeVarSize := code.ReadUint8(ins[ip+3:])
 			vm.currentRecord().instructionPointer += 3
-			err := vm.pushClosure(int(constIndex))
+			err := vm.pushClosure(int(constIndex), int(freeVarSize))
 			if err != nil {
 				return err
 			}
@@ -472,13 +480,19 @@ func (vm *VM) executeHashIndex(hash, index object.Object) error {
 
 }
 
-func (vm *VM) pushClosure(constIndex int) error {
+func (vm *VM) pushClosure(constIndex, freeVarSize int) error {
 	constant := vm.constants[constIndex]
 	function, ok := constant.(*code.CompiledFunction)
 
 	if !ok {
 		return fmt.Errorf("not a function: %+v", constant)
 	}
-	closure := &code.Closure{Fn: function}
+
+	free := make([]object.Object, freeVarSize)
+	for i := 0; i < freeVarSize; i++ {
+		free[i] = vm.stack[vm.stackPointer-freeVarSize+i]
+	}
+
+	closure := &code.Closure{Fn: function, Free: free}
 	return vm.push(closure)
 }

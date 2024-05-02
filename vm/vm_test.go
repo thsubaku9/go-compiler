@@ -522,22 +522,57 @@ func TestCallingFunctionsWithWrongArguments(t *testing.T) {
 	}
 }
 
-// func TestNestedIdentiferAccess(t *testing.T) {
-// 	// this currently fails because functions aren't aware on what level the Local value scopes to (is binded)
-// 	tests := []vmTestCase{
-// 		{
-// 			input: `
-// 			   let one = fn() {
-// 				let uno = 1;
-// 					fn() {
-// 						let two = 2;
-// 						uno + two;
-// 					}()
-// 				};
-// 			   one();
-// 			   `, expected: 3,
-// 		},
-// 	}
+func TestClosures(t *testing.T) {
+	tests := []vmTestCase{
+		{
+			input: `
+			   let newClosure = fn(a) {
+				   fn() { a; };
+			   };
+			   let closure = newClosure(99);
+			   closure();
+			   `,
+			expected: 99,
+		}, {
+			input: `
+           let newAdder = fn(a, b) {
+               fn(c) { a + b + c };
+           };
+           let adder = newAdder(1, 2);
+           adder(8);
+           `,
+			expected: 11,
+		},
+		{
+			input: `
+					   let newAdder = fn(a, b) {
+						   let c = a + b;
+						   fn(d) { c + d };
+					   };
+					   let adder = newAdder(1, 2);
+					   adder(8);
+					   `,
+			expected: 11,
+		},
+	}
+	runVmTests(t, tests)
+}
 
-// 	runVmTests(t, tests)
-// }
+func TestNestedIdentiferAccess(t *testing.T) {
+	tests := []vmTestCase{
+		{
+			input: `
+			   let one = fn() {
+				let uno = 1;
+					fn() {
+						let two = 2;
+						uno + two;
+					}()
+				};
+			   one();
+			   `, expected: 3,
+		},
+	}
+
+	runVmTests(t, tests)
+}
